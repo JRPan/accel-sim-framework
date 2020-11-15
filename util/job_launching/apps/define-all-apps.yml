@@ -10,6 +10,12 @@
 # If you have a bunch of random benchmarks in random places, then a "suite" can be just one benchmark
 
 # Rodinia 2.0 implemented with a pass/fail functional test
+l1d-microbench:
+    exec_dir: "/home/tgrogers-raid/a/pan251/mybench/"
+    data_dirs: "/home/tgrogers-raid/a/pan251/accel-sim-framework/gpu-app-collection/data_dirs/"
+    execs:
+        - l1d:
+            -  
 rodinia_2.0-ft:
     exec_dir: "$GPUAPPS_ROOT/bin/$CUDA_VERSION/release/"
     data_dirs: "$GPUAPPS_ROOT/data_dirs/cuda/rodinia/2.0-ft/"
