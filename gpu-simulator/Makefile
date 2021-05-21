@@ -84,6 +84,7 @@ clean:
 	rm -rf $(BIN_DIR)
 	rm -rf $(BUILD_DIR)
 	$(MAKE) clean -C gpgpu-sim
+	rm -rf ../sim_run_11.0/gpgpu-sim-builds/*
 
 
 include $(BUILD_DIR)/main.makedepend
