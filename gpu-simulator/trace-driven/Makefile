@@ -45,6 +45,8 @@ else
 	CXXFLAGS += 
 endif
 
+include /home/pan251/accel-sim-framework/gpu-simulator/gpgpu-sim/src/graphics/Makefile.include
+
 OPTFLAGS += -g3 -fPIC -std=c++11
 
 SRCS = $(shell ls *.cc)
