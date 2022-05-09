@@ -21,6 +21,7 @@
 #include "trace_driven.h"
 #include "../trace-parser/trace_parser.h"
 #include "accelsim_version.h"
+#include <dlfcn.h>
 
 /* TO DO:
  * NOTE: the current version of trace-driven is functionally working fine,
@@ -51,9 +52,27 @@ trace_kernel_info_t *create_kernel_info( kernel_trace_t* kernel_trace_info,
 		                      gpgpu_context *m_gpgpu_context, class trace_config *config,
 							  trace_parser *parser);
 
+// extern int run_retrace(int argc, char** argv);
+
+void runTrace(const std::string &pTracePath);
 
 int main(int argc, const char **argv) {
-  std::cout << "Accel-Sim [build " << g_accelsim_version << "]";
+  std::cout << "Accel-Sim [build " << g_accelsim_version << "]" << std::endl;
+
+    // prepare gpgpu-sim
+  assert(argc == 2);
+  gpgpu_context *ctx = GPGPU_Context();
+  CUctx_st *context = GPGPUSim_Context(ctx);
+  gpgpu_t *gpu = context->get_device()->get_gpgpu();
+  printf("running file ");
+  printf(argv[1]);
+  printf("\n");
+  fflush(stdout);
+
+  // runTrace("/home/pan251/emerald/gem5-graphics/example_traces/textured_cube.trace");
+  runTrace(argv[1]);
+  abort();
+
   gpgpu_context *m_gpgpu_context = new gpgpu_context();
   trace_config tconfig;
 
@@ -204,3 +223,35 @@ gpgpu_sim *gpgpu_trace_sim_init_perf_model(int argc, const char *argv[],
   return m_gpgpu_context->the_gpgpusim->g_the_gpu;
 }
 
+void runTrace(const std::string &pTracePath) {
+  if (not std::ifstream(pTracePath)) {
+    abort();
+  }
+
+  const char *libpath = std::getenv("APITRACE_LIB_PATH");
+  if (libpath == NULL) {
+    abort();
+  }
+  int (*run_retrace)(int argc, char **argv);
+  void *handle = dlopen(libpath, RTLD_LAZY | RTLD_GLOBAL);
+  if (!handle) {
+    abort();
+  }
+  *(void **)(&run_retrace) = dlsym(handle, "run_retrace");
+  if (!run_retrace) {
+    dlclose(handle);
+    abort();
+  }
+
+
+  char *argv[2];
+  argv[0] = new char[100];
+  argv[1] = new char[2048];
+  strcpy(argv[0], "glretrace");
+  strcpy(argv[1], pTracePath.c_str());
+  run_retrace(2, (char **)argv);
+  dlclose(handle);
+  //  traceDone = true;
+  delete argv[0];
+  delete argv[1];
+}
