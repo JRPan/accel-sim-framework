@@ -115,7 +115,11 @@ int main(int argc, const char **argv) {
       }
       if (!stream_busy && m_gpgpu_sim->can_start_kernel() && !k->was_launched()) {
         std::cout << "launching kernel name: " << k->get_name() << " uid: " << k->get_uid() << std::endl;
-        m_gpgpu_sim->launch(k);
+        if (k->is_pim()) {
+          m_gpgpu_sim->launch_pim(k);
+        } else {
+          m_gpgpu_sim->launch(k);
+        }
         k->set_launched();
         busy_streams.push_back(k->get_cuda_stream_id());
       }

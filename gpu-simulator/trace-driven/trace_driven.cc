@@ -96,6 +96,7 @@ trace_kernel_info_t::trace_kernel_info_t(dim3 gridDim, dim3 blockDim,
   m_tconfig = config;
   m_kernel_trace_info = kernel_trace_info;
   m_was_launched = false;
+  m_is_pim = true;
 
   // resolve the binary version
   if (kernel_trace_info->binary_verion == AMPERE_RTX_BINART_VERSION ||
@@ -485,6 +486,11 @@ void trace_gpgpu_sim::createSIMTCluster() {
     m_cluster[i] =
         new trace_simt_core_cluster(this, i, m_shader_config, m_memory_config,
                                     m_shader_stats, m_memory_stats);
+  m_pim_cluster = new pim_core_cluster * [1];
+  for (unsigned i = 0; i < m_shader_config->n_pim_clusters; i++)
+    m_pim_cluster[i] =
+        new trace_pim_core_cluster(this, i, m_shader_config, m_memory_config,
+                                    m_shader_stats, m_memory_stats);
 }
 
 void trace_simt_core_cluster::create_shader_core_ctx() {
@@ -492,6 +498,16 @@ void trace_simt_core_cluster::create_shader_core_ctx() {
   for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; i++) {
     unsigned sid = m_config->cid_to_sid(i, m_cluster_id);
     m_core[i] = new trace_shader_core_ctx(m_gpu, this, sid, m_cluster_id,
+                                          m_config, m_mem_config, m_stats);
+    m_core_sim_order.push_back(i);
+  }
+}
+
+void trace_pim_core_cluster::create_shader_core_ctx() {
+  m_core = new pim_core_ctx * [1];
+  for (unsigned i = 0; i < 1; i++) {
+    unsigned sid = m_config->cid_to_sid(i, m_cluster_id);
+    m_core[i] = new trace_pim_core_ctx(m_gpu, this, sid, m_cluster_id,
                                           m_config, m_mem_config, m_stats);
     m_core_sim_order.push_back(i);
   }
@@ -638,4 +654,53 @@ void trace_shader_core_ctx::issue_warp(register_set &warp,
   // delete warp_inst_t class here, it is not required anymore by gpgpu-sim
   // after issue
   delete pI;
+}
+
+void trace_pim_core_ctx::checkExecutionStatusAndUpdate(warp_inst_t &inst,
+                                                       unsigned t,
+                                                       unsigned tid) {
+  return;
+}
+
+void trace_pim_core_ctx::func_exec_inst(warp_inst_t &inst) { return; }
+
+void trace_pim_core_ctx::init_warps(unsigned cta_id, unsigned start_thread,
+                                    unsigned end_thread, unsigned ctaid,
+                                    int cta_size, kernel_info_t &kernel) {
+  return;
+}
+
+unsigned trace_pim_core_ctx::sim_init_thread(
+    kernel_info_t &kernel, ptx_thread_info **thread_info, int sid, unsigned tid,
+    unsigned threads_left, unsigned num_threads, core_t *core,
+    unsigned hw_cta_id, unsigned hw_warp_id, gpgpu_t *gpu) {
+  return 0;
+}
+
+void trace_pim_core_ctx::create_shd_warp() { return; }
+
+const warp_inst_t *trace_pim_core_ctx::get_next_inst(unsigned warp_id,
+                                                     address_type pc) {
+  return NULL;
+}
+
+void trace_pim_core_ctx::updateSIMTStack(unsigned warpId, warp_inst_t *inst) {
+  return;
+}
+
+void trace_pim_core_ctx::get_pdom_stack_top_info(unsigned warp_id,
+                                                 const warp_inst_t *pI,
+                                                 unsigned *pc, unsigned *rpc) {
+  return;
+}
+
+const active_mask_t &trace_pim_core_ctx::get_active_mask(
+    unsigned warp_id, const warp_inst_t *pI) {
+   return pI->get_active_mask();
+}
+
+void trace_pim_core_ctx::issue_warp(register_set &warp, const warp_inst_t *pI,
+                                    const active_mask_t &active_mask,
+                                    unsigned warp_id, unsigned sch_id) {
+  return;
 }
