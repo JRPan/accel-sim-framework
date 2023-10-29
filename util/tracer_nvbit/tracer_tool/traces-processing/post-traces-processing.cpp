@@ -98,10 +98,14 @@ void group_per_block(const char *filepath) {
   vector<threadblock_info> insts;
   unsigned grid_dim_x, grid_dim_y, grid_dim_z, tb_dim_x, tb_dim_y, tb_dim_z;
   unsigned tb_id_x, tb_id_y, tb_id_z, tb_id, warpid_tb;
+  unsigned lineinfo, linenum;
   string line;
   stringstream ss;
   string string1, string2;
   bool found_grid_dim = false, found_block_dim = false;
+
+  // Add a flag for LDGSTS instruction to indicate which one to remove
+  vector<vector<bool>> ldgsts_flags;  // true to remove, false to not
 
   while (!ifs.eof()) {
     getline(ifs, line);
@@ -123,13 +127,25 @@ void group_per_block(const char *filepath) {
         sscanf(line.c_str(), "-block dim = (%d,%d,%d)", &tb_dim_x, &tb_dim_y,
                &tb_dim_z);
         found_block_dim = true;
+      } else if (string1 == "enable" && string2 == "lineinfo") {
+        sscanf(line.c_str(), "-enable lineinfo = %d", &lineinfo);
       }
 
       if (found_grid_dim && found_block_dim) {
         insts.resize(grid_dim_x * grid_dim_y * grid_dim_z);
+
+        // Size the ldgsts_flags vector
+        ldgsts_flags.resize(grid_dim_x * grid_dim_y * grid_dim_z);
+
         for (unsigned i = 0; i < insts.size(); ++i) {
           insts[i].warp_insts_array.resize(
               ceil(float(tb_dim_x * tb_dim_y * tb_dim_z) / 32));
+
+          // Size the ldgsts_flags vector
+          ldgsts_flags[i].resize(ceil(float(tb_dim_x * tb_dim_y * tb_dim_z) / 32));
+          for (unsigned j = 0; j < ldgsts_flags[i].size(); j++) {
+            ldgsts_flags[i][j] = true;
+          }
         }
       }
       ofs << line << endl;
@@ -149,9 +165,36 @@ void group_per_block(const char *filepath) {
 	//ss.ignore(); //remove the space
 	//rest_of_line.clear();
       // getline(ss, rest_of_line); //get rest of the string!
-	string rest_of_line(ss.str().substr(ss.tellg()+1));
+	    string rest_of_line(ss.str().substr(ss.tellg()+1));
 
-      insts[tb_id].warp_insts_array[warpid_tb].push_back(rest_of_line);
+      // Ni: ignore the shmem LDGSTS instruction
+      stringstream opcode_ss;
+      string opcode, temp;
+      unsigned dest_num;
+      opcode_ss << rest_of_line;
+      for (int i = 0; i < 2; i++) {
+        opcode_ss >> temp;
+      }
+      opcode_ss >> dest_num;
+      for (unsigned i = 0; i < dest_num; i++) {
+        opcode_ss >> temp;
+      }
+      opcode_ss >> opcode;
+
+
+      // One actual LDGSTS instruction includes 2 LDGSTS instructions in the trace, 
+      // because it has two memory references. 
+      // This is trying to remove the one with the shared memory address.
+      
+      if (opcode.find("LDGSTS") != string::npos) {
+        if (!ldgsts_flags[tb_id][warpid_tb]) {
+          insts[tb_id].warp_insts_array[warpid_tb].push_back(rest_of_line);
+        }
+        ldgsts_flags[tb_id][warpid_tb] = !ldgsts_flags[tb_id][warpid_tb];
+      }
+      else {
+        insts[tb_id].warp_insts_array[warpid_tb].push_back(rest_of_line);
+      }
     }
   }
 

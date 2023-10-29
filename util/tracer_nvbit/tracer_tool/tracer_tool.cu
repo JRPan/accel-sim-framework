@@ -28,7 +28,7 @@
 /* contains definition of the inst_trace_t structure */
 #include "common.h"
 
-#define TRACER_VERSION "3"
+#define TRACER_VERSION "4"
 
 /* Channel used to communicate from GPU to CPU receiving thread */
 #define CHANNEL_SIZE (1l << 20)
@@ -52,6 +52,7 @@ int enable_compress = 1;
 int print_core_id = 0;
 int exclude_pred_off = 1;
 int active_from_start = 1;
+int lineinfo = 0;
 /* used to select region of interest when active from start is 0 */
 bool active_region = true;
 
@@ -84,6 +85,9 @@ void nvbit_at_init() {
               "End of the instruction interval where to apply instrumentation");
   GET_VAR_INT(exclude_pred_off, "EXCLUDE_PRED_OFF", 1,
               "Exclude predicated off instruction from count");
+  GET_VAR_INT(lineinfo, "TRACE_LINEINFO", 0,
+              "Include source code line info at the start of each traced line. "
+              "The target binary must be compiled with -lineinfo or --generate-line-info");
   GET_VAR_INT(dynamic_kernel_limit_end, "DYNAMIC_KERNEL_LIMIT_END", 0,
               "Limit of the number kernel to be printed, 0 means no limit");
   GET_VAR_INT(dynamic_kernel_limit_start, "DYNAMIC_KERNEL_LIMIT_START", 0,
@@ -97,7 +101,7 @@ void nvbit_at_init() {
   GET_VAR_INT(enable_compress, "TOOL_COMPRESS", 1, "Enable traces compression");
   GET_VAR_INT(print_core_id, "TOOL_TRACE_CORE", 0,
               "write the core id in the traces");
-  GET_VAR_INT(terminate_after_limit_number_of_kernels_reached, "TERMINATE_UPON_LIMIT", 0, 
+  GET_VAR_INT(terminate_after_limit_number_of_kernels_reached, "TERMINATE_UPON_LIMIT", 0,
               "Stop the process once the current kernel > DYNAMIC_KERNEL_LIMIT_END");
   GET_VAR_INT(user_defined_folders, "USER_DEFINED_FOLDERS", 0, "Uses the user defined "
               "folder TRACES_FOLDER path environment");
@@ -138,6 +142,7 @@ void instrument_function_if_needed(CUcontext ctx, CUfunction func) {
     uint32_t cnt = 0;
     /* iterate on all the static instructions in the function */
     for (auto instr : instrs) {
+      uint32_t line_num = 0;
 
       if (cnt < instr_begin_interval || cnt >= instr_end_interval) {
         cnt++;
@@ -148,6 +153,11 @@ void instrument_function_if_needed(CUcontext ctx, CUfunction func) {
         instr->printDecoded();
       }
 
+      if(lineinfo) {
+        char *file_name, *dir_name;
+        nvbit_get_line_info(ctx, func, instr->getOffset(), &file_name, &dir_name, &line_num);
+      }
+
       if (opcode_to_id_map.find(instr->getOpcode()) == opcode_to_id_map.end()) {
         int opcode_id = opcode_to_id_map.size();
         opcode_to_id_map[instr->getOpcode()] = opcode_id;
@@ -156,13 +166,14 @@ void instrument_function_if_needed(CUcontext ctx, CUfunction func) {
 
       int opcode_id = opcode_to_id_map[instr->getOpcode()];
 
-      /* check all operands. For now, we ignore constant, TEX, predicates and 
+      /* check all operands. For now, we ignore constant, TEX, predicates and
        * unified registers. We only report vector regisers */
       int src_oprd[MAX_SRC];
       int srcNum = 0;
       int dst_oprd = -1;
       int mem_oper_idx = -1;
       int num_mref = 0;
+      uint64_t imm_value = 0;
 
       for(int i = 0; i < instr->getNumOperands(); ++i){
         const InstrType::operand_t *op = instr->getOperand(i);
@@ -187,6 +198,10 @@ void instrument_function_if_needed(CUcontext ctx, CUfunction func) {
             src_oprd[srcNum] = instr->getOperand(i)->u.reg.num;
             srcNum++;
           }
+        }
+        // Add immediate value for DEPBAR instruction
+        else if (op->type == InstrType::OperandType::IMM_UINT64) {
+          imm_value = instr->getOperand(i)->u.imm_uint64.value;
         }
       }
 
@@ -228,6 +243,9 @@ void instrument_function_if_needed(CUcontext ctx, CUfunction func) {
           nvbit_add_call_arg_const_val32(instr, -1);
         }
         nvbit_add_call_arg_const_val32(instr, srcNum);
+
+        /* immediate info */
+        nvbit_add_call_arg_const_val64(instr, imm_value);
        
         /* add pointer to channel_dev and other counters*/
         nvbit_add_call_arg_const_val64(instr, (uint64_t)&channel_dev);
@@ -236,6 +254,8 @@ void instrument_function_if_needed(CUcontext ctx, CUfunction func) {
         nvbit_add_call_arg_const_val64(instr,
                                       (uint64_t)&reported_dynamic_instr_counter);
         nvbit_add_call_arg_const_val64(instr, (uint64_t)&stop_report);
+        /* Add Source code line number for current instr */
+        nvbit_add_call_arg_const_val32(instr, (int)line_num);
 
         mem_oper_idx--;
       } while (mem_oper_idx >= 0);
@@ -291,7 +311,7 @@ void nvbit_at_cuda_event(CUcontext ctx, int is_exit, nvbit_api_cuda_t cbid,
       if (active_from_start)
         active_region = false;
     }
-    
+
     if(user_defined_folders == 1)
     {
       std::string usr_folder = std::getenv("TRACES_FOLDER");
@@ -390,12 +410,12 @@ void nvbit_at_cuda_event(CUcontext ctx, int is_exit, nvbit_api_cuda_t cbid,
                 (uint64_t)nvbit_get_local_mem_base_addr(ctx));
         fprintf(resultsFile, "-nvbit version = %s\n", NVBIT_VERSION);
         fprintf(resultsFile, "-accelsim tracer version = %s\n", TRACER_VERSION);
+        fprintf(resultsFile,  "-enable lineinfo = %d\n", lineinfo);
         fprintf(resultsFile, "\n");
 
         fprintf(resultsFile,
-                "#traces format = threadblock_x threadblock_y threadblock_z "
-                "warpid_tb PC mask dest_num [reg_dests] opcode src_num "
-                "[reg_srcs] mem_width [adrrescompress?] [mem_addresses]\n");
+                "#traces format = [line_num] PC mask dest_num [reg_dests] opcode src_num "
+                "[reg_srcs] mem_width [adrrescompress?] [mem_addresses] immediate\n");
         fprintf(resultsFile, "\n");
       }
 
@@ -590,6 +610,9 @@ void *recv_thread_fun(void *) {
           fprintf(resultsFile, "%d ", ma->sm_id);
           fprintf(resultsFile, "%d ", ma->warpid_sm);
         }
+        if(lineinfo){
+          fprintf(resultsFile, "%d ", ma->line_num);
+        }
         fprintf(resultsFile, "%04x ", ma->vpc); // Print the virtual PC
         fprintf(resultsFile, "%08x ", ma->active_mask & ma->predicate_mask);
         if (ma->GPRDst >= 0) {
@@ -659,6 +682,9 @@ void *recv_thread_fun(void *) {
         } else {
           fprintf(resultsFile, "0 ");
         }
+
+        // Print the immediate
+        fprintf(resultsFile, "%d ", ma->imm);
 
         fprintf(resultsFile, "\n");
 

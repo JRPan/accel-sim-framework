@@ -49,6 +49,7 @@ struct inst_trace_t {
   inst_trace_t();
   inst_trace_t(const inst_trace_t &b);
 
+  unsigned line_num;
   unsigned m_pc;
   unsigned mask;
   unsigned reg_dsts_num;
@@ -56,9 +57,12 @@ struct inst_trace_t {
   std::string opcode;
   unsigned reg_srcs_num;
   unsigned reg_src[MAX_SRC];
+  uint64_t imm;
+
   inst_memadd_info_t *memadd_info;
 
-  bool parse_from_string(std::string trace, unsigned tracer_version);
+  bool parse_from_string(std::string trace, unsigned tracer_version,
+                         unsigned enable_lineinfo);
 
   bool check_opcode_contain(const std::vector<std::string> &opcode,
                             std::string param) const;
@@ -86,6 +90,7 @@ struct kernel_trace_t {
   unsigned nregs;
   unsigned long cuda_stream_id;
   unsigned binary_verion;
+  unsigned enable_lineinfo;
   unsigned trace_verion;
   std::string nvbit_verion;
   unsigned long long shmem_base_addr;
@@ -107,7 +112,7 @@ class trace_parser {
 
   void get_next_threadblock_traces(
       std::vector<std::vector<inst_trace_t> *> threadblock_traces,
-      unsigned trace_version, std::ifstream *ifs);
+      unsigned trace_version, unsigned enable_lineinfo, std::ifstream *ifs);
 
   void kernel_finalizer(kernel_trace_t *trace_info);
 
