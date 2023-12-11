@@ -83,6 +83,7 @@ int main(int argc, const char **argv) {
   std::vector<unsigned long> busy_streams;
   std::vector<trace_kernel_info_t *> kernels_info;
   kernels_info.reserve(window_size);
+  m_gpgpu_sim->pim_active = true;
 
   unsigned i = 0;
   while (i < commandlist.size() || !kernels_info.empty()) {

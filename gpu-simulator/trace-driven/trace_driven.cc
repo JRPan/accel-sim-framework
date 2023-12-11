@@ -515,7 +515,7 @@ void trace_gpgpu_sim::createSIMTCluster() {
   m_pim_cluster = new pim_core_cluster * [1];
   for (unsigned i = 0; i < m_shader_config->n_pim_clusters; i++)
     m_pim_cluster[i] =
-        new trace_pim_core_cluster(this, i, m_shader_config, m_memory_config,
+        new trace_pim_core_cluster(this, m_shader_config->n_simt_clusters + i, m_shader_config, m_memory_config,
                                     m_shader_stats, m_memory_stats);
 }
 
