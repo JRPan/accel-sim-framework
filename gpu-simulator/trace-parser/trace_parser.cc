@@ -255,6 +255,11 @@ std::vector<trace_command> trace_parser::parse_commandlist_file() {
       filepath = directory + "/" + line;
       command.command_string = filepath;
       commandlist.push_back(command);
+    } else if (line.find("fprop") != std::string::npos) {
+      trace_command command;
+      command.m_type = command_type::pim_layer_launch;
+      command.command_string = line;
+      commandlist.push_back(command);
     }
     // ignore gpu_to_cpu_memory_cpy
   }
