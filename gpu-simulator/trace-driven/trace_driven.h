@@ -179,8 +179,8 @@ class trace_pim_core_cluster : public pim_core_cluster {
                           const shader_core_config *config,
                           const memory_config *mem_config,
                           class shader_core_stats *stats,
-                          class memory_stats_t *mstats)
-      : pim_core_cluster(gpu, cluster_id, config, mem_config, stats, mstats) {
+                          class memory_stats_t *mstats, pim_core_config *pim_config, pim_core_stats *pim_stats)
+      : pim_core_cluster(gpu, cluster_id, config, mem_config, stats, mstats, pim_config, pim_stats) {
     create_shader_core_ctx();
   }
 
@@ -247,12 +247,12 @@ class trace_shader_core_ctx : public shader_core_ctx {
 class trace_pim_core_ctx : public pim_core_ctx {
  public:
   trace_pim_core_ctx(class gpgpu_sim *gpu, class pim_core_cluster *cluster,
-                        unsigned shader_id, unsigned tpc_id,
-                        const shader_core_config *config,
-                        const memory_config *mem_config,
-                        shader_core_stats *stats)
+                     unsigned shader_id, unsigned tpc_id,
+                     const shader_core_config *config,
+                     const memory_config *mem_config, shader_core_stats *stats,
+                     pim_core_config *pim_config, pim_core_stats *pim_stats)
       : pim_core_ctx(gpu, cluster, shader_id, tpc_id, config, mem_config,
-                        stats) {
+                     stats, pim_config, pim_stats) {
     // create_front_pipeline();
     // create_shd_warp();
     // create_schedulers();

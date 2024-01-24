@@ -514,9 +514,10 @@ void trace_gpgpu_sim::createSIMTCluster() {
                                     m_shader_stats, m_memory_stats);
   m_pim_cluster = new pim_core_cluster * [1];
   for (unsigned i = 0; i < m_shader_config->n_pim_clusters; i++)
-    m_pim_cluster[i] =
-        new trace_pim_core_cluster(this, m_shader_config->n_simt_clusters + i, m_shader_config, m_memory_config,
-                                    m_shader_stats, m_memory_stats);
+    m_pim_cluster[i] = new trace_pim_core_cluster(
+        this, m_shader_config->n_simt_clusters + i, m_shader_config,
+        m_memory_config, m_shader_stats, m_memory_stats, m_pim_config,
+        m_pim_stats);
 }
 
 void trace_simt_core_cluster::create_shader_core_ctx() {
@@ -531,10 +532,11 @@ void trace_simt_core_cluster::create_shader_core_ctx() {
 
 void trace_pim_core_cluster::create_shader_core_ctx() {
   m_core = new pim_core_ctx * [1];
-  for (unsigned i = 0; i < 1; i++) {
+  for (unsigned i = 0; i < m_config->n_pim_cores_per_cluster; i++) {
     unsigned sid = m_config->cid_to_sid(i, m_cluster_id);
-    m_core[i] = new trace_pim_core_ctx(m_gpu, this, sid, m_cluster_id,
-                                          m_config, m_mem_config, m_stats);
+    m_core[i] =
+        new trace_pim_core_ctx(m_gpu, this, sid, m_cluster_id, m_config,
+                               m_mem_config, m_stats, m_pim_config, m_pim_stats);
     m_core_sim_order.push_back(i);
   }
 }
