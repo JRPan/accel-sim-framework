@@ -254,9 +254,9 @@ class trace_pim_core_ctx : public pim_core_ctx {
       : pim_core_ctx(gpu, cluster, shader_id, tpc_id, config, mem_config,
                      stats, pim_config, pim_stats) {
     // create_front_pipeline();
-    // create_shd_warp();
+    create_shd_warp();
     // create_schedulers();
-    // create_exec_pipeline();
+    create_exec_pipeline();
   }
 
   virtual void checkExecutionStatusAndUpdate(warp_inst_t &inst, unsigned t,
