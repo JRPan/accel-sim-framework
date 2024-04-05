@@ -44,9 +44,12 @@ void accel_sim_framework::simulation_loop() {
   // launch
   // while loop till the end of the end kernel execution
   // prints stats
+    m_gpgpu_sim->pim_active = true;
 
   while (commandlist_index < commandlist.size() || !kernels_info.empty()) {
     parse_commandlist();
+
+     m_gpgpu_sim->launch_pim(pim_layers);
 
     // Launch all kernels within window that are on a stream that isn't already
     // running
@@ -110,7 +113,13 @@ void accel_sim_framework::parse_commandlist() {
       std::cout << "Header info loaded for kernel command : "
                 << commandlist[commandlist_index].command_string << std::endl;
       commandlist_index++;
-    } else {
+    } else if (commandlist[commandlist_index].m_type == command_type::pim_layer_launch) {
+        pim_layer *layer = parse_pim_layer_info(commandlist[commandlist_index].command_string);
+        if (layer != NULL) {
+          pim_layers.push_back(layer);
+        }
+        commandlist_index++;
+      } else {
       // unsupported commands will fail the simulation
       assert(0 && "Undefined Command");
     }
@@ -137,7 +146,9 @@ void accel_sim_framework::cleanup(unsigned finished_kernel) {
         break;
     }
   }
-  assert(k);
+  if (pim_layers.empty()) {
+    assert(k);
+  }
   m_gpgpu_sim->print_stats();
 }
 
@@ -223,4 +234,90 @@ gpgpu_sim *accel_sim_framework::gpgpu_trace_sim_init_perf_model(
   m_gpgpu_context->the_gpgpusim->g_simulation_starttime = time((time_t *)NULL);
 
   return m_gpgpu_context->the_gpgpusim->g_the_gpu;
+}
+
+
+pim_layer *accel_sim_framework::parse_pim_layer_info(const std::string &pimlayer_desc) {
+  std::cout << pimlayer_desc << std::endl;
+  pim_layer *layer = new pim_layer();
+  std::string token;
+  std::stringstream ss(pimlayer_desc);
+  unsigned count = 0;
+  pim_layer_type layer_type = NUM_LAYER_TYPES;
+  std::unordered_map<std::string, int> layer_params;
+  std::string marker = "UNDEFINED";
+
+  while (std::getline(ss, token, '"')) {
+    if (count == 9) {
+      marker = token;
+      if (token.find("conv2d") != std::string::npos) {
+        layer_type = CONV2D;  //conv2d
+      }
+    }
+    if (count == 13) {
+      if (layer_type == CONV2D) {
+        size_t pos = token.find('=');
+        std::stringstream lss(token);
+        std::string ltoken;
+        while(getline(lss, ltoken, ',')) {
+          size_t pos = ltoken.find('=');
+          if (pos != std::string::npos) {
+            std::string key = ltoken.substr(0, pos);
+            int value = std::stoi(ltoken.substr(pos + 1));
+            layer_params[key] = value;
+          }
+        }
+      }
+    }
+
+    count++;
+
+  }
+
+  assert(marker != "UNDEFINED");
+  if (uniq_layer.find(marker) != uniq_layer.end()) {
+    pim_layer *exist = uniq_layer.at(marker);
+    if (layer_type == CONV2D) {
+      assert(exist->type == CONV2D);
+      assert(exist->N == layer_params.at("N"));
+      assert(exist->C == layer_params.at("C"));
+      assert(exist->H == layer_params.at("H"));
+      assert(exist->W == layer_params.at("W"));
+      assert(exist->K == layer_params.at("K"));
+      assert(exist->P == layer_params.at("P"));
+      assert(exist->Q == layer_params.at("Q"));
+      assert(exist->R == layer_params.at("R"));
+      assert(exist->S == layer_params.at("S"));
+      assert(exist->pad_h == layer_params.at("ph"));
+      assert(exist->pad_w == layer_params.at("pw"));
+      assert(exist->stride_h == layer_params.at("U"));
+      assert(exist->stride_w == layer_params.at("V"));
+      assert(exist->dilation_h == layer_params.at("dh"));
+      assert(exist->dilation_w == layer_params.at("dw"));
+      assert(exist->group == layer_params.at("g"));
+    }
+    return NULL;
+  } else {
+    if (layer_type == CONV2D) {
+      layer->type = CONV2D;
+      layer->N = layer_params.at("N");
+      layer->C = layer_params.at("C");
+      layer->H = layer_params.at("H");
+      layer->W = layer_params.at("W");
+      layer->K = layer_params.at("K");
+      layer->P = layer_params.at("P");
+      layer->Q = layer_params.at("Q");
+      layer->R = layer_params.at("R");
+      layer->S = layer_params.at("S");
+      layer->pad_h = layer_params.at("ph");
+      layer->pad_w = layer_params.at("pw");
+      layer->stride_h = layer_params.at("U");
+      layer->stride_w = layer_params.at("V");
+      layer->dilation_h = layer_params.at("dh");
+      layer->dilation_w = layer_params.at("dw");
+      layer->group = layer_params.at("g");
+      uniq_layer.insert(std::make_pair(marker, layer));
+      return layer;
+    }
+  }
 }

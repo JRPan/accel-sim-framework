@@ -17,6 +17,7 @@
 #include "gpgpusim_entrypoint.h"
 #include "option_parser.h"
 #include "trace_driven.h"
+// #include "gpgpu-sim/pim.h"
 
 class accel_sim_framework {
  public:
@@ -53,7 +54,7 @@ class accel_sim_framework {
   gpgpu_sim *gpgpu_trace_sim_init_perf_model(int argc, const char *argv[],
                                   gpgpu_context *m_gpgpu_context,
                                   trace_config *m_config);
-
+  pim_layer *parse_pim_layer_info(const std::string &pimlayer_desc);
 
  private:
   gpgpu_context *m_gpgpu_context;
@@ -70,5 +71,7 @@ class accel_sim_framework {
   std::vector<unsigned long> busy_streams;
   std::vector<trace_kernel_info_t *> kernels_info;
   std::vector<trace_command> commandlist;
+  std::vector<pim_layer *> pim_layers;
+  std::unordered_map<std::string, pim_layer*> uniq_layer;
 
 };
