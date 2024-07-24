@@ -17,7 +17,7 @@
 #include "gpgpusim_entrypoint.h"
 #include "option_parser.h"
 #include "trace_driven.h"
-// #include "gpgpu-sim/pim.h"
+#include "onnx.pb.h"
 
 class accel_sim_framework {
  public:
@@ -46,17 +46,36 @@ class accel_sim_framework {
   void simulation_loop();
   void parse_commandlist();
   void cleanup(unsigned finished_kernel);
-  unsigned simulate();
-  trace_kernel_info_t *create_kernel_info(kernel_trace_t *kernel_trace_info,
+  pim_layer *parse_pim_layer_info(const std::string &pimlayer_desc);
+  void bind_onnx_model(const std::string node_proto_string);
+  void parse_attributes(onnx::NodeProto node, pim_layer *layer);
+  void bind_onnx_input(std::string input_name,
+                       std::vector<unsigned> input_shape);
+
+ private:
+ trace_kernel_info_t *create_kernel_info(kernel_trace_t *kernel_trace_info,
                                           gpgpu_context *m_gpgpu_context,
                                           trace_config *config,
                                           trace_parser *parser);
   gpgpu_sim *gpgpu_trace_sim_init_perf_model(int argc, const char *argv[],
                                   gpgpu_context *m_gpgpu_context,
                                   trace_config *m_config);
-  pim_layer *parse_pim_layer_info(const std::string &pimlayer_desc);
+  void solve_dependencies(pim_layer *Prev, pim_layer *Next) {
+    // assert Next is not in Prev's next_layers
+    if (std::find(Prev->next_layers.begin(), Prev->next_layers.end(), Next) !=
+        Prev->next_layers.end()) {
+          assert(0 && "Next layer already exists in Prev's next_layers");
+        }
+    Prev->next_layers.push_back(Next);
+    if (std::find(Next->prev_layers.begin(), Next->prev_layers.end(), Prev) !=
+        Next->prev_layers.end()) {
+          assert(0 && "Prev layer already exists in Next's prev_layers");
+        }
+    Next->prev_layers.push_back(Prev);
+  }
 
- private:
+  unsigned simulate();
+
   gpgpu_context *m_gpgpu_context;
   trace_config tconfig;
   trace_parser tracer;
@@ -71,7 +90,8 @@ class accel_sim_framework {
   std::vector<unsigned long> busy_streams;
   std::vector<trace_kernel_info_t *> kernels_info;
   std::vector<trace_command> commandlist;
+  std::unordered_map<std::string, pim_layer *> output_to_node;
+  std::unordered_map<std::string, std::vector<unsigned>> shape_info;
   std::vector<pim_layer *> pim_layers;
-  std::unordered_map<std::string, pim_layer*> uniq_layer;
 
 };

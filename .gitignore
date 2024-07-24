@@ -10,6 +10,7 @@ gpucomputingsdk_4.2.9_linux.run
 util/job_launching/*.txt
 .vscode
 gpu-simulator/gpgpu-sim
-.vscode/*
+.vscode
 extern
+
 gpu-simulator/accel_sim.pyi

@@ -43,7 +43,6 @@ else
 endif
 
 CXXFLAGS+=-I./trace-driven -I./trace-parser -I$(GPGPUSIM_ROOT)/libcuda -I$(GPGPUSIM_ROOT)/src -I$(CUDA_INSTALL_PATH)/include -I$(BUILD_DIR)
-
 LIBS+=-L$(GPGPUSIM_ROOT)/lib/$(GPGPUSIM_CONFIG)/ -lcudart -lm -lz -lGL -pthread $(BUILD_DIR)/*.o 
 
 all: $(BIN_DIR)/accel-sim.out
@@ -81,9 +80,23 @@ trace-parser: checkenv makedirs
 	$(MAKE) -C trace-parser depend
 	$(MAKE) -C trace-parser
 
+WRAPPER_CXXFLAGS = $(CXXFLAGS)
+WRAPPER_CXXFLAGS += $(shell python3-config --includes) -shared
+WRAPPER_CXXFLAGS += -I./trace-driven -I./trace-parser -I$(GPGPUSIM_ROOT)/libcuda -I$(GPGPUSIM_ROOT)/src -I$(CUDA_INSTALL_PATH)/include  -I./python_wrapper
+WRAPPER_CXXFLAGS += -I./extern/pybind11/include 
+WRAPPER_CXXFLAGS += ./python_wrapper/onnx.pb.cc ./accel-sim.cc
+WRAPPER_LIBS = $(LIBS)
+WRAPPER_LIBS += -lprotobuf -pthread
+
+# python_wrapper: ./python_wrapper/python_wrapper.cc checkenv $(BIN_DIR)/accel-sim.out
+python_wrapper: checkenv
+	g++ $(WRAPPER_CXXFLAGS) $(WRAPPER_LIBS) ./python_wrapper/python_wrapper.cc -o $(BUILD_DIR)/accel_sim$(shell python3-config --extension-suffix)
+	stubgen -m accel_sim -o .
+
 clean:
 	rm -rf $(BIN_DIR)
 	rm -rf $(BUILD_DIR)
+	rm -f ./accel_sim.pyi
 	$(MAKE) clean -C $(GPGPUSIM_ROOT)
 
 
