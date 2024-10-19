@@ -2,7 +2,7 @@
 #include "accelsim_version.h"
 
 accel_sim_framework::accel_sim_framework(std::string config_file,
-                                          std::string trace_file) {
+                                         std::string trace_file) {
   std::cout << "Accel-Sim [build " << g_accelsim_version << "]";
   m_gpgpu_context = new gpgpu_context();
 
@@ -44,10 +44,11 @@ void accel_sim_framework::simulation_loop() {
   // launch
   // while loop till the end of the end kernel execution
   // prints stats
-    m_gpgpu_sim->pim_active = true;
-    m_gpgpu_sim->launch_pim(pim_layers);
+  m_gpgpu_sim->pim_active = true;
+  m_gpgpu_sim->launch_pim(pim_layers);
 
-  while (commandlist_index < commandlist.size() || !kernels_info.empty() || m_gpgpu_sim->pim_active) {
+  while (commandlist_index < commandlist.size() || !kernels_info.empty() ||
+         m_gpgpu_sim->pim_active) {
     parse_commandlist();
 
     // Launch all kernels within window that are on a stream that isn't already
@@ -93,19 +94,23 @@ void accel_sim_framework::parse_commandlist() {
   // gulp up as many commands as possible - either cpu_gpu_mem_copy
   // or kernel_launch - until the vector "kernels_info" has reached
   // the window_size or we have read every command from commandlist
-  while (kernels_info.size() < window_size && commandlist_index < commandlist.size()) {
+  while (kernels_info.size() < window_size &&
+         commandlist_index < commandlist.size()) {
     trace_kernel_info_t *kernel_info = NULL;
-    if (commandlist[commandlist_index].m_type == command_type::cpu_gpu_mem_copy) {
+    if (commandlist[commandlist_index].m_type ==
+        command_type::cpu_gpu_mem_copy) {
       size_t addre, Bcount;
-      tracer.parse_memcpy_info(commandlist[commandlist_index].command_string, addre, Bcount);
+      tracer.parse_memcpy_info(commandlist[commandlist_index].command_string,
+                               addre, Bcount);
       std::cout << "launching memcpy command : "
                 << commandlist[commandlist_index].command_string << std::endl;
       m_gpgpu_sim->perf_memcpy_to_gpu(addre, Bcount);
       commandlist_index++;
-    } else if (commandlist[commandlist_index].m_type == command_type::kernel_launch) {
+    } else if (commandlist[commandlist_index].m_type ==
+               command_type::kernel_launch) {
       // Read trace header info for window_size number of kernels
-      kernel_trace_t *kernel_trace_info =
-          tracer.parse_kernel_info(commandlist[commandlist_index].command_string);
+      kernel_trace_t *kernel_trace_info = tracer.parse_kernel_info(
+          commandlist[commandlist_index].command_string);
       kernel_info = create_kernel_info(kernel_trace_info, m_gpgpu_context,
                                        &tconfig, &tracer);
       kernels_info.push_back(kernel_info);
@@ -169,10 +174,9 @@ unsigned accel_sim_framework::simulate() {
   return finished_kernel_uid;
 }
 
-trace_kernel_info_t *accel_sim_framework::create_kernel_info(kernel_trace_t *kernel_trace_info,
-                                        gpgpu_context *m_gpgpu_context,
-                                        trace_config *config,
-                                        trace_parser *parser) {
+trace_kernel_info_t *accel_sim_framework::create_kernel_info(
+    kernel_trace_t *kernel_trace_info, gpgpu_context *m_gpgpu_context,
+    trace_config *config, trace_parser *parser) {
   gpgpu_ptx_sim_info info;
   info.smem = kernel_trace_info->shmem;
   info.regs = kernel_trace_info->nregs;
@@ -231,8 +235,12 @@ gpgpu_sim *accel_sim_framework::gpgpu_trace_sim_init_perf_model(
 }
 
 void accel_sim_framework::bind_onnx_model(const std::string node_proto_string) {
-  onnx::GraphProto graph;
-  graph.ParseFromString(node_proto_string);
+  onnx::ModelProto model;
+  model.ParseFromString(node_proto_string);
+  onnx::GraphProto graph = model.graph();
+
+  unsigned batch_size = 1;
+  unsigned sequence_length = 512;
 
   // inputs
   for (auto input : graph.input()) {
@@ -241,6 +249,7 @@ void accel_sim_framework::bind_onnx_model(const std::string node_proto_string) {
     for (auto dim : input.type().tensor_type().shape().dim()) {
       shape.push_back(dim.dim_value());
     }
+    shape = {batch_size, sequence_length};
     bind_onnx_input(name, shape);
     shape_info.insert(std::make_pair(name, shape));
   }
@@ -253,6 +262,7 @@ void accel_sim_framework::bind_onnx_model(const std::string node_proto_string) {
       shape.push_back(dim);
     }
     shape_info.insert(std::make_pair(name, shape));
+    initializers.insert(initailizer.name());
   }
 
   // nodes (Layers)
@@ -265,7 +275,7 @@ void accel_sim_framework::bind_onnx_model(const std::string node_proto_string) {
     if (layer_type == "Conv") {
       assert(node.input_size() == 3);
 
-      layer->type = CONV;
+      layer->type = pim_layer_type::CONV;
       parse_attributes(node, layer);
 
       std::string x = node.input(0);
@@ -278,11 +288,9 @@ void accel_sim_framework::bind_onnx_model(const std::string node_proto_string) {
       layer->C = input_layer->K;
 
       // calculate output size
-      layer->P =
-          (layer->H + 2 * layer->pad_h - layer->R) / layer->stride_h + 1;
-      layer->Q =
-          (layer->W + 2 * layer->pad_w - layer->S) / layer->stride_w + 1;
-      
+      layer->P = (layer->H + 2 * layer->pad_h - layer->R) / layer->stride_h + 1;
+      layer->Q = (layer->W + 2 * layer->pad_w - layer->S) / layer->stride_w + 1;
+
       std::vector<unsigned> filter_shape = shape_info.at(node.input(1));
       // filter: K * C * R * S
       layer->K = filter_shape[0];
@@ -293,7 +301,7 @@ void accel_sim_framework::bind_onnx_model(const std::string node_proto_string) {
     } else if (layer_type == "Relu") {
       std::string input = node.input(0);
 
-      layer->type = RELU;
+      layer->type = pim_layer_type::RELU;
 
       assert(output_to_node.find(input) != output_to_node.end());
       pim_layer *input_layer = output_to_node.at(input);
@@ -302,8 +310,9 @@ void accel_sim_framework::bind_onnx_model(const std::string node_proto_string) {
       layer->K = input_layer->K;
       layer->P = input_layer->P;
       layer->Q = input_layer->Q;
+      layer->tensor_dim = input_layer->tensor_dim;
     } else if (layer_type == "MaxPool") {
-      layer->type = MAXPOOL;
+      layer->type = pim_layer_type::MAXPOOL;
       parse_attributes(node, layer);
 
       std::string input = node.input(0);
@@ -313,29 +322,42 @@ void accel_sim_framework::bind_onnx_model(const std::string node_proto_string) {
       solve_dependencies(input_layer, layer);
 
       layer->K = input_layer->K;
-      layer->P = (input_layer->P - layer->R + 2 * layer->pad_h) / layer->stride_h + 1;
-      layer->Q = (input_layer->Q - layer->S + 2 * layer->pad_w) / layer->stride_w + 1;
+      layer->P =
+          (input_layer->P - layer->R + 2 * layer->pad_h) / layer->stride_h + 1;
+      layer->Q =
+          (input_layer->Q - layer->S + 2 * layer->pad_w) / layer->stride_w + 1;
+      layer->tensor_dim = input_layer->tensor_dim;
     } else if (layer_type == "Add") {
-      layer->type = ADD;
+      layer->type = pim_layer_type::ADD;
 
       for (auto input : node.input()) {
-        assert(output_to_node.find(input) != output_to_node.end());
+        if (output_to_node.find(input) == output_to_node.end()) {
+          assert(initializers.find(input) != initializers.end());
+          continue;
+        }
         // layer->prev_layers.push_back(output_to_node.at(input));
         solve_dependencies(output_to_node.at(input), layer);
+
+        pim_layer *input_layer = output_to_node.at(input);
+        layer->K = input_layer->K;
+        layer->P = input_layer->P;
+        layer->Q = input_layer->Q;
+
+        if (input_layer->tensor_dim.size() > layer->tensor_dim.size()) {
+          layer->tensor_dim = input_layer->tensor_dim;
+        }
       }
 
-      std::string input = node.input(0);
-      pim_layer *input_layer = output_to_node.at(input);
-      // // layer->prev_layers.push_back(input_layer);
-      // solve_dependencies(input_layer, layer);
+      // std::string input = node.input(0);
+      // pim_layer *input_layer = output_to_node.at(input);
 
-      layer->K = input_layer->K;
-      layer->P = input_layer->P;
-      layer->Q = input_layer->Q;
+      // layer->K = input_layer->K;
+      // layer->P = input_layer->P;
+      // layer->Q = input_layer->Q;
     } else if (layer_type == "GlobalAveragePool") {
       assert(node.input_size() == 1);
       assert(node.output_size() == 1);
-      layer->type = GLOBAL_AVG_POOL;
+      layer->type = pim_layer_type::GLOBAL_AVG_POOL;
 
       std::string input = node.input(0);
       pim_layer *input_layer = output_to_node.at(input);
@@ -345,10 +367,114 @@ void accel_sim_framework::bind_onnx_model(const std::string node_proto_string) {
       layer->K = input_layer->K;
       layer->P = 1;
       layer->Q = 1;
-    }
+      // } else if (layer_type == "Mul") {
+    } else if (layer_type == "Transpose") {
+      assert(node.attribute_size() == 1);
+      assert(node.attribute(0).name() == "perm");
+      assert(node.attribute(0).ints_size() == 4);
+      assert(node.input_size() == 1);
+      pim_layer *input_layer = output_to_node.at(node.input(0));
+      for (int i = 0; i < 4; i++) {
+        layer->data.push_back(node.attribute(0).ints(i));
+      }
+      if (layer->data == std::vector<unsigned>{0, 2, 3, 1}) {
+        layer->tensor_dim = {batch_size, 12, 64, sequence_length};
+      } else if (layer->data == std::vector<unsigned>{0, 2, 1, 3}) {
+        layer->tensor_dim = {batch_size, 12, sequence_length, 64};
+      } else {
+        assert(0 && "unknown perm");
+      }
+      solve_dependencies(input_layer, layer);
 
-    else {
-      assert(0 && "unknown node");
+    } else if (layer_type == "Constant") {
+      layer->type = pim_layer_type::CONSTANT;
+    } else if (layer_type == "MatMul") {
+      assert(node.input_size() == 2);
+      layer->type = pim_layer_type::MATMUL;
+      layer->N = batch_size;
+
+      std::vector<unsigned> input_shape_a;
+
+      std::string input_a = node.input(0);
+
+      if (output_to_node.find(input_a) != output_to_node.end()) {
+        pim_layer *input_layer = output_to_node.at(input_a);
+        solve_dependencies(input_layer, layer);
+        assert(output_to_node.find(input_a) != output_to_node.end());
+        // input_shape_a.push_back(sequence_length);
+        input_shape_a = input_layer->tensor_dim;
+      } else {
+        assert(shape_info.find(input_a) != shape_info.end());
+      }
+
+      std::string input_b = node.input(1);
+      if (output_to_node.find(input_b) != output_to_node.end()) {
+        pim_layer *input_layer = output_to_node.at(input_b);
+        solve_dependencies(input_layer, layer);
+        assert(output_to_node.find(input_b) != output_to_node.end());
+
+        std::vector<unsigned> input_shape_b = input_layer->tensor_dim;
+
+        if (input_shape_a.size() == 4) {
+          assert(input_shape_b.size() == 4);
+          assert(input_shape_a[3] == input_shape_b[2]);
+          assert(input_shape_a[1] == input_shape_b[1]);
+          layer->C = input_shape_a[1];
+          layer->H = input_shape_a[2];
+          layer->W = input_shape_a[3];
+
+          layer->R = input_shape_b[2];
+          layer->S = input_shape_b[3];
+
+          layer->K = input_shape_a[1];
+          layer->P = input_shape_a[2];
+          layer->Q = input_shape_b[3];
+
+          layer->tensor_dim = {layer->N, layer->K, layer->P, layer->Q};
+        } else {
+          assert(0 && "unknown shape");
+        }
+      } else {
+        // embedded tensor
+        assert(shape_info.find(input_b) != shape_info.end());
+        std::vector<unsigned> input_shape_b = shape_info.at(input_b);
+        assert(input_shape_b.size() == 2);
+        if (input_shape_a.size() != 3) {
+          input_shape_a = {batch_size, sequence_length, input_shape_b[0]};
+        } else {
+          assert(input_shape_a[2] == input_shape_b[0]);
+        }
+
+        layer->C = 1;
+        layer->H = input_shape_a[1];  // input M
+        layer->W = input_shape_a[2];  // input N
+
+        layer->R = input_shape_b[0];  // filter N
+        layer->S = input_shape_b[1];  // filter P
+
+        layer->K = 1;
+        layer->P = input_shape_a[1];  // output M
+        layer->Q = input_shape_b[1];  // output P
+
+        layer->tensor_dim = {layer->N, layer->P, layer->Q};
+      }
+
+      printf("MatMul %s: %d %d %d %d, %d %d %d, %d %d", layer->name.c_str(),
+             layer->N, layer->C, layer->H, layer->W, layer->K, layer->R,
+             layer->S, layer->P, layer->Q);
+      printf("\n");
+    } else {
+      // printf("WARNING: treating %s as AUX\n", layer_type.c_str());
+      layer->type = pim_layer_type::AUX;
+
+      for (auto input : node.input()) {
+        if (output_to_node.find(input) == output_to_node.end()) {
+          assert(initializers.find(input) != initializers.end());
+          continue;
+        }
+        solve_dependencies(output_to_node.at(input), layer);
+        layer->copy_from(output_to_node.at(input));
+      }
     }
     assert(node.output_size() == 1);
     std::string output = node.output(0);
@@ -365,7 +491,7 @@ void accel_sim_framework::bind_onnx_model(const std::string node_proto_string) {
     assert(output_to_node.find(name) != output_to_node.end());
     pim_layer *layer = new pim_layer();
     layer->name = name;
-    layer->type = OUTPUT;
+    layer->type = pim_layer_type::OUTPUT;
 
     pim_layer *input_layer = output_to_node.at(name);
     // input_layer->next_layers.push_back(layer);
@@ -374,7 +500,8 @@ void accel_sim_framework::bind_onnx_model(const std::string node_proto_string) {
   }
 }
 
-void accel_sim_framework::parse_attributes(onnx::NodeProto node, pim_layer *layer) {
+void accel_sim_framework::parse_attributes(onnx::NodeProto node,
+                                           pim_layer *layer) {
   for (auto attr : node.attribute()) {
     std::string name = attr.name();
     if (name == "kernel_shape") {
@@ -395,10 +522,9 @@ void accel_sim_framework::parse_attributes(onnx::NodeProto node, pim_layer *laye
       layer->dilation_w = attr.ints(1);
     } else if (name == "group") {
       layer->group = attr.i();
-    } else if (name == "ceil_mode"){
-
+    } else if (name == "ceil_mode") {
     }
-    
+
     else {
       assert(0 && "unknown attribute");
     }
@@ -407,20 +533,26 @@ void accel_sim_framework::parse_attributes(onnx::NodeProto node, pim_layer *laye
 
 void accel_sim_framework::bind_onnx_input(std::string input_name,
                                           std::vector<unsigned> input_shape) {
-  assert(input_shape.size() >= 4);
-
   pim_layer *layer = new pim_layer();
   layer->name = input_name;
-  layer->type = INPUT;
-  layer->N = 1;
-  layer->C = 3;
-  layer->H = input_shape[2];
-  layer->W = input_shape[3];
+  layer->type = pim_layer_type::INPUT;
+  layer->tensor_dim = input_shape;
 
-  // treat as passthrough, set output as input
-  layer->P = layer->H;
-  layer->Q = layer->W;
+  if (input_shape.size() == 2) {
+    layer->N = 1;
+    layer->C = input_shape[0];
 
+    layer->K = layer->C;
+  } else if (input_shape.size() == 4) {
+    layer->N = 1;
+    layer->C = 3;
+    layer->H = input_shape[2];
+    layer->W = input_shape[3];
+
+    // treat as passthrough, set output as input
+    layer->P = layer->H;
+    layer->Q = layer->W;
+  }
 
   assert(output_to_node.find(input_name) == output_to_node.end());
   output_to_node.insert(std::make_pair(input_name, layer));

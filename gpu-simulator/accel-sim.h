@@ -62,6 +62,9 @@ class accel_sim_framework {
                                   trace_config *m_config);
   void solve_dependencies(pim_layer *Prev, pim_layer *Next) {
     // assert Next is not in Prev's next_layers
+    if (Prev->type == pim_layer_type::CONSTANT) {
+      return;
+    }
     if (std::find(Prev->next_layers.begin(), Prev->next_layers.end(), Next) !=
         Prev->next_layers.end()) {
           assert(0 && "Next layer already exists in Prev's next_layers");
@@ -92,6 +95,7 @@ class accel_sim_framework {
   std::vector<trace_command> commandlist;
   std::unordered_map<std::string, pim_layer *> output_to_node;
   std::unordered_map<std::string, std::vector<unsigned>> shape_info;
+  std::set<std::string> initializers;
   std::vector<pim_layer *> pim_layers;
 
 };

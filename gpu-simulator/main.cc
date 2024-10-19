@@ -28,7 +28,8 @@
 int main(int argc, const char **argv) {
   accel_sim_framework accel_sim(argc, argv);
 
-  std::ifstream file("/home/pan251/accel-sim-framework-pim/serialized.model", std::ios::binary);
+  // std::ifstream file("/home/pan251/accel-sim-framework-pim/resnet50.onnx", std::ios::binary);
+  std::ifstream file("/home/pan251/accel-sim-framework-pim/bert-base-uncased.onnx", std::ios::binary);
 
   if (!file) {
     std::cerr << "Failed to open file for reading." << std::endl;
